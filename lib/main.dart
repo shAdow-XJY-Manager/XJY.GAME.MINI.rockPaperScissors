@@ -1,95 +1,22 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'frequency/game_support.dart';
+import 'game.dart';
 
-void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Rock Paper Scissors',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
-      home: const RockPaperScissorsPage(),
-    );
-  }
-}
-
-class RockPaperScissorsPage extends StatefulWidget {
-  const RockPaperScissorsPage({super.key});
-
-  @override
-  State<RockPaperScissorsPage> createState() => _RockPaperScissorsPageState();
-}
-
-class _RockPaperScissorsPageState extends State<RockPaperScissorsPage> {
-  String _playerChoice = '';
-  String _computerChoice = '';
-  String _result = '';
-
-  void _playGame(String playerChoice) {
-    const choices = ['Rock', 'Paper', 'Scissors'];
-    final random = Random();
-    final computerChoice = choices[random.nextInt(choices.length)];
-    String result;
-
-    if (playerChoice == computerChoice) {
-      result = 'It\'s a Tie!';
-    } else if ((playerChoice == 'Rock' && computerChoice == 'Scissors') ||
-        (playerChoice == 'Scissors' && computerChoice == 'Paper') ||
-        (playerChoice == 'Paper' && computerChoice == 'Rock')) {
-      result = 'You Win!';
-    } else {
-      result = 'You Lose!';
-    }
-
-    setState(() {
-      _playerChoice = playerChoice;
-      _computerChoice = computerChoice;
-      _result = result;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Rock Paper Scissors'),
-      ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: <Widget>[
-          Text('Your Choice: $_playerChoice', style: const TextStyle(fontSize: 22)),
-          Text('Computer\'s Choice: $_computerChoice', style: const TextStyle(fontSize: 22)),
-          Text(_result, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              ElevatedButton(
-                onPressed: () => _playGame('Rock'),
-                child: const Text('Rock'),
-              ),
-              const SizedBox(width: 12),
-              ElevatedButton(
-                onPressed: () => _playGame('Paper'),
-                child: const Text('Paper'),
-              ),
-              const SizedBox(width: 12),
-              ElevatedButton(
-                onPressed: () => _playGame('Scissors'),
-                child: const Text('Scissors'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+void main()=>runApp(const MyApp());
+class MyApp extends StatelessWidget {const MyApp({super.key});@override Widget build(BuildContext context)=>MaterialApp(debugShowCheckedModeBanner:false,title:'猜拳 · 频率游戏',theme:FrequencyTheme.dark(),home:const RockPaperScissorsPage());}
+class RockPaperScissorsPage extends StatefulWidget {const RockPaperScissorsPage({super.key});@override State<RockPaperScissorsPage> createState()=>_RpsState();}
+class _RpsState extends State<RockPaperScissorsPage>{
+  static const names=['石头','布','剪刀'];static const icons=[Icons.sports_mma_outlined,Icons.pan_tool_outlined,Icons.content_cut];
+  RpsMatch match=RpsMatch();final random=Random();Timer? timer;String session=newSession(),message='同时揭晓，先赢三次。';
+  bool started=false,paused=false,audio=false,predictive=false,two=false,handover=false,second=false;int? locked,first;List<int>? pending;
+  @override void initState(){super.initState();final j=readMap('rock-paper-scissors.save');if(j!=null&&j.isNotEmpty){final restored=RpsMatch.fromJson(objectMap(j['match']));if(restored==null){invalidSave();}if(restored!=null&&!restored.over){match=restored;predictive=j['predictive']==true;two=j['two']==true;session=(j['session'] is String) ? j['session'] as String : newSession();final choice=j['locked'];if(choice is int&&choice>=0&&choice<3)locked=choice;message='已找到系列赛记录，点击继续。';}}}
+  @override void dispose(){timer?.cancel();super.dispose();}
+  void persist(){saveMap('rock-paper-scissors.save',{'match':match.toJson(),'predictive':predictive,'two':two,'session':session,'locked':locked,'finished':match.over});}
+  void reset([bool active=true]){timer?.cancel();setState((){match=RpsMatch();session=newSession();started=active;locked=null;pending=null;first=null;second=false;handover=false;message=active?'新系列赛开始，请选择手势。':'选择对手，开始三胜系列赛。';});if(active&&!two)lock();persist();}
+  void lock(){locked=chooseGesture(match.rounds.map((r)=>r[0]).toList(),predictive,random);persist();}
+  void pick(int choice){if(!started||paused||pending!=null||handover||match.over)return;if(two&&!second){setState((){first=choice;handover=true;});return;}pending=[two?first!:choice,two?choice:locked!];setState(()=>message='选择已锁定，正在同时揭晓…');reveal();}
+  void reveal(){timer?.cancel();if(paused||pending==null)return;timer=Timer(const Duration(milliseconds:220),(){if(!mounted||paused||pending==null)return;final choices=pending!;setState((){match.add(choices[0],choices[1]);pending=null;first=null;second=false;final r=rpsResult(choices[0],choices[1]);message='${two?'玩家一':'你'}出${names[choices[0]]}，${two?'玩家二':'电脑'}出${names[choices[1]]}。${r==0?'平局，不计胜场':r==1?'这一回合你方获胜':'这一回合对方获胜'}。';});sound(audio);if(match.over){final result=match.player>=3?(two?'玩家一获胜':'你赢了'):(two?'玩家二获胜':'电脑获胜');recordResult('rock-paper-scissors',session,result,'${match.player}:${match.opponent} · ${match.rounds.length} 回合');setState(()=>message='$result · 系列赛 ${match.player}:${match.opponent}');sound(audio,match.player>=3?1:2);}else if(!two){lock();}persist();});}
+  @override Widget build(BuildContext context)=>GameFrame(title:'猜拳',subtitle:'02 / 概率对决 · 三胜系列赛',gameId:'rock-paper-scissors',playing:started&&!match.over,onExit:persist,onRestart:reset,onRules:()=>rulesDialog(context,'石头胜剪刀，剪刀胜布，布胜石头。同样选择为平局，不加胜场，先取得三胜结束系列。\n\n均衡对手完全随机。历史预测只读取之前最多 20 回合，以 75% 概率克制最常见选择、25% 概率随机。电脑在你选择前锁定出拳，绝不读取你的当前选择。\n\n双人模式第一人选择后交接屏幕，第二人选择后同时揭晓。Tab、Enter 和空格可操作全部按钮，Esc 暂停。'),onPause:(v){paused=v;timer?.cancel();if(!v)reveal();},onSound:(v)=>audio=v,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[sectionTitle('三手之间','没有稳赢的拳，只有下一回合的选择。'),panel(Column(children:[Wrap(alignment:WrapAlignment.spaceAround,crossAxisAlignment:WrapCrossAlignment.center,spacing:16,runSpacing:16,children:[metric(two?'玩家一':'你','${match.player}'),const Text(':',style:TextStyle(fontSize:44,color:FrequencyPalette.muted)),metric(two?'玩家二':'电脑','${match.opponent}')]),const SizedBox(height:24),statusText(message),const SizedBox(height:24),if(!started)Wrap(spacing:12,runSpacing:12,children:[ChoiceChip(label:const Text('均衡随机'),selected:!two&&!predictive,onSelected:(v){reset(false);setState((){two=false;predictive=false;});}),ChoiceChip(label:const Text('历史预测'),selected:!two&&predictive,onSelected:(v){reset(false);setState((){two=false;predictive=true;});}),ChoiceChip(label:const Text('同屏双人'),selected:two,onSelected:(v){reset(false);setState(()=>two=true);}),FilledButton.icon(onPressed:(){setState(()=>started=true);if(!two&&locked==null)lock();},icon:const Icon(Icons.play_arrow),label:Text(match.rounds.isEmpty?'开始系列赛':'继续系列赛'))])else if(handover)Column(children:[const Icon(Icons.screen_lock_portrait_outlined,size:48,color:FrequencyPalette.amber),const SizedBox(height:16),const Text('选择已隐藏。请把屏幕交给玩家二。'),const SizedBox(height:16),FilledButton(onPressed:()=>setState((){handover=false;second=true;message='玩家二，请选择你的手势。';}),child:const Text('我是玩家二，开始选择'))])else if(match.over)FilledButton.icon(onPressed:reset,icon:const Icon(Icons.restart_alt),label:const Text('再来一场'))else LayoutBuilder(builder:(context,c)=>Wrap(spacing:16,runSpacing:16,alignment:WrapAlignment.center,children:List.generate(3,(i)=>SizedBox(width:c.maxWidth<520?(c.maxWidth-32)/3:152.0,child:OutlinedButton(onPressed:pending==null?()=>pick(i):null,style:OutlinedButton.styleFrom(padding:const EdgeInsets.symmetric(vertical:24)),child:Column(children:[Icon(icons[i],size:48,color:FrequencyPalette.accent),const SizedBox(height:12),Text(names[i],style:const TextStyle(fontSize:20)),const SizedBox(height:8),Text(['胜剪刀','胜石头','胜布'][i],style:const TextStyle(color:FrequencyPalette.muted,fontSize:14))])))))),const SizedBox(height:24),if(!two)Text(predictive?'策略说明：只参考先前历史，电脑已预先锁定本回合。尝试改变你的出拳分布。':'策略说明：每种手势的选择概率都是 1/3。',style:const TextStyle(color:FrequencyPalette.muted))])),const SizedBox(height:16),TextButton(onPressed:()=>reset(false),child:const Text('切换对手模式')),const SizedBox(height:24),if(match.rounds.isNotEmpty)panel(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('回合轨迹',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),const SizedBox(height:16),...match.rounds.asMap().entries.toList().reversed.take(12).map((e)=>ListTile(contentPadding:EdgeInsets.zero,leading:Text('${e.key+1}'.padLeft(2,'0')),title:Text('${names[e.value[0]]} / ${names[e.value[1]]}'),trailing:Text(e.value[2]==0?'平':e.value[2]==1?'胜':'负',style:TextStyle(color:e.value[2]==1?FrequencyPalette.accent:FrequencyPalette.amber))))]))]));
 }
