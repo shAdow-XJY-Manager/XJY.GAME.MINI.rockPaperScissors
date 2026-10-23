@@ -24,6 +24,7 @@ class RockPaperScissorsPage extends StatefulWidget {
 }
 
 class _RpsState extends State<RockPaperScissorsPage> {
+  final frame = GlobalKey<GameFrameState>();
   static const names = ['石头', '布', '剪刀'];
   static const icons = [
     Icons.sports_mma_outlined,
@@ -164,14 +165,32 @@ class _RpsState extends State<RockPaperScissorsPage> {
     });
   }
 
+  Future<bool> requestReset([bool active = true]) async {
+    if (frame.currentState != null &&
+        !await frame.currentState!.allowReset(
+          hasProgress:
+              !match.over &&
+              (started ||
+                  match.rounds.isNotEmpty ||
+                  handover ||
+                  pending != null),
+          action: active ? '重新开始' : '切换对手模式',
+        ))
+      return false;
+    if (!mounted) return false;
+    reset(active);
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) => GameFrame(
+    key: frame,
     title: '猜拳',
     subtitle: '02 / 概率对决 · 三胜系列赛',
     gameId: 'rock-paper-scissors',
     playing: started && !match.over,
     onExit: persist,
-    onRestart: reset,
+    onRestart: requestReset,
     onRules: () => rulesDialog(
       context,
       '石头胜剪刀，剪刀胜布，布胜石头。同样选择为平局，不加胜场，先取得三胜结束系列。\n\n均衡对手完全随机。历史预测只读取之前最多 20 回合，以 75% 概率克制最常见选择、25% 概率随机。电脑在你选择前锁定出拳，绝不读取你的当前选择。\n\n双人模式第一人选择后交接屏幕，第二人选择后同时揭晓。Tab、Enter 和空格可操作全部按钮，Esc 暂停。',
@@ -217,8 +236,9 @@ class _RpsState extends State<RockPaperScissorsPage> {
                     ChoiceChip(
                       label: const Text('均衡随机'),
                       selected: !two && !predictive,
-                      onSelected: (v) {
-                        reset(false);
+                      onSelected: (v) async {
+                        if (!v || (!two && !predictive)) return;
+                        if (!await requestReset(false)) return;
                         setState(() {
                           two = false;
                           predictive = false;
@@ -228,8 +248,9 @@ class _RpsState extends State<RockPaperScissorsPage> {
                     ChoiceChip(
                       label: const Text('历史预测'),
                       selected: !two && predictive,
-                      onSelected: (v) {
-                        reset(false);
+                      onSelected: (v) async {
+                        if (!v || (!two && predictive)) return;
+                        if (!await requestReset(false)) return;
                         setState(() {
                           two = false;
                           predictive = true;
@@ -239,8 +260,9 @@ class _RpsState extends State<RockPaperScissorsPage> {
                     ChoiceChip(
                       label: const Text('同屏双人'),
                       selected: two,
-                      onSelected: (v) {
-                        reset(false);
+                      onSelected: (v) async {
+                        if (!v || two) return;
+                        if (!await requestReset(false)) return;
                         setState(() => two = true);
                       },
                     ),
@@ -335,7 +357,12 @@ class _RpsState extends State<RockPaperScissorsPage> {
           ),
         ),
         const SizedBox(height: 16),
-        TextButton(onPressed: () => reset(false), child: const Text('切换对手模式')),
+        TextButton(
+          onPressed: () {
+            if (started) requestReset(false);
+          },
+          child: const Text('切换对手模式'),
+        ),
         const SizedBox(height: 16),
         if (match.rounds.isNotEmpty)
           panel(
